@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Template Comparator - TemplateChecker{% endblock %}
+
+{% block content %}
+<h1>Template Comparator</h1>
+<p class="subtitle">Compare a built email against a reference template to catch errors introduced during the build process.</p>
+
+<form method="POST" enctype="multipart/form-data" action="/comparator" class="upload-form comparator-form" id="comparator-form">
+    <div class="form-row">
+        <div class="form-group">
+            <label for="reference">Reference Template</label>
+            <select name="reference" id="reference" class="form-select">
+                <option value="">-- Select a template --</option>
+                {% for template in templates %}
+                <option value="{{ template }}" {% if selected_ref == template %}selected{% endif %}>{{ template }}</option>
+                {% endfor %}
+            </select>
+            <span class="form-hint">Or upload a reference file:</span>
+            <input type="file" name="reference_file" id="reference-file" accept=".html,.htm" class="form-file-input">
+        </div>
+        <div class="form-group">
+            <label for="built-file">Built Email</label>
+            <div class="upload-area upload-area-small" id="upload-area-built">
+                <input type="file" name="built_file" id="built-file" accept=".html,.htm" required>
+                <label for="built-file" class="upload-label">
+                    <span class="upload-text">Choose built email HTML</span>
+                    <span class="upload-hint">.html or .htm</span>
+                </label>
+            </div>
+        </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Compare</button>
+</form>
+
+{% if results %}
+<section class="results">
+    <h2>Comparison Results</h2>
+    <div class="summary-bar">
+        <span class="badge {% if total == 0 %}badge-success{% else %}badge-warning{% endif %}">
+            {{ total }} Difference{{ 's' if total != 1 }}
+        </span>
+    </div>
+
+    <!-- Diagnose an Issue form -->
+    {% if total > 0 %}
+    <form method="POST" action="/comparator" class="diagnosis-form" id="diagnosis-form">
+        <input type="hidden" name="reference_html" value="{{ reference_html|e }}">
+        <input type="hidden" name="built_html" value="{{ built_html|e }}">
+        <input type="hidden" name="reference" value="{{ selected_ref }}">
+        <label for="symptom">Diagnose an Issue</label>
+        <div class="diagnosis-input-row">
+            <input type="text" name="symptom" id="symptom" placeholder="Describe what looks wrong, e.g. &quot;the font looks wrong in the header&quot;" value="{{ symptom }}" class="diagnosis-input">
+            <button type="submit" class="btn btn-primary">Diagnose</button>
+        </div>
+    </form>
+    {% endif %}
+
+    <!-- Diagnosed results -->
+    {% if diagnosed is not none %}
+    <div class="diagnosed-results" id="diagnosed-results">
+        {% if diagnosed %}
+        <h3>Diagnosed Issues <span class="diagnosed-count">({{ diagnosed|length }} match{{ 'es' if diagnosed|length != 1 }})</span></h3>
+        <div class="diagnosed-cards">
+            {% for item in diagnosed %}
+            <div class="diagnosed-card">
+                <div class="diagnosed-card-header">
+                    <span class="diff-type diff-type-{{ item.diff.type }}">{{ item.diff.type }}</span>
+                    <span class="diagnosed-category">{{ item.category }}</span>
+                    <span class="diagnosed-score">Score: {{ item.score }}</span>
+                </div>
+                <div class="diagnosed-card-body">
+                    <div class="diagnosed-element"><code>{{ item.diff.element }}</code></div>
+                    {% if item.diff.property %}
+                    <div class="diagnosed-detail">Property: <code>{{ item.diff.property }}</code>
+                        {% if item.diff.reference_value %}<span class="diff-before">{{ item.diff.reference_value }}</span>{% endif %}
+                        {% if item.diff.built_value %}<span class="diff-after">{{ item.diff.built_value }}</span>{% endif %}
+                    </div>
+                    {% elif item.diff.details %}
+                    <div class="diagnosed-detail">{{ item.diff.details }}</div>
+                    {% endif %}
+                    {% if item.diff.reference_url %}
+                    <div class="diagnosed-detail">Ref: <span class="url-cell">{{ item.diff.reference_url }}</span></div>
+                    {% endif %}
+                    {% if item.diff.built_url %}
+                    <div class="diagnosed-detail">Built: <span class="url-cell">{{ item.diff.built_url }}</span></div>
+                    {% endif %}
+                </div>
+                {% if item.explanation %}
+                <div class="match-reason">{{ item.explanation }}</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="diagnosed-no-match">
+            <p>No specific matches for "{{ symptom }}" — <a href="#comparison-tabs" class="diagnosed-link">browse all differences</a> in the tabs below.</p>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="tabs" id="comparison-tabs">
+        <button class="tab active" data-tab="structure">Structure ({{ results.structure | length }})</button>
+        <button class="tab" data-tab="styles">Styles ({{ results.styles | length }})</button>
+        <button class="tab" data-tab="content">Content ({{ results.content | length }})</button>
+        <button class="tab" data-tab="links">Links ({{ results.links | length }})</button>
+    </div>
+
+    <div class="tab-content active" id="tab-structure">
+        {% if results.structure %}
+        <table class="diff-table">
+            <thead>
+                <tr><th>Type</th><th>Element</th><th>Details</th></tr>
+            </thead>
+            <tbody>
+                {% for diff in results.structure %}
+                <tr class="diff-{{ diff.type }}">
+                    <td><span class="diff-type diff-type-{{ diff.type }}">{{ diff.type }}</span></td>
+                    <td><code>{{ diff.element }}</code></td>
+                    <td>{{ diff.details }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-issues">No structural differences found.</p>
+        {% endif %}
+    </div>
+
+    <div class="tab-content" id="tab-styles">
+        {% if results.styles %}
+        <table class="diff-table">
+            <thead>
+                <tr><th>Type</th><th>Element</th><th>Property</th><th>Reference</th><th>Built</th></tr>
+            </thead>
+            <tbody>
+                {% for diff in results.styles %}
+                <tr class="diff-{{ diff.type }}">
+                    <td><span class="diff-type diff-type-{{ diff.type }}">{{ diff.type }}</span></td>
+                    <td><code>{{ diff.element }}</code></td>
+                    <td><code>{{ diff.property }}</code></td>
+                    <td>{{ diff.reference_value or '—' }}</td>
+                    <td>{{ diff.built_value or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-issues">No style differences found.</p>
+        {% endif %}
+    </div>
+
+    <div class="tab-content" id="tab-content">
+        {% if results.content %}
+        <table class="diff-table">
+            <thead>
+                <tr><th>Type</th><th>Element</th><th>Details</th><th>Reference</th><th>Built</th></tr>
+            </thead>
+            <tbody>
+                {% for diff in results.content %}
+                <tr class="diff-{{ diff.type }}">
+                    <td><span class="diff-type diff-type-{{ diff.type }}">{{ diff.type }}</span></td>
+                    <td><code>{{ diff.element }}</code></td>
+                    <td>{{ diff.details }}</td>
+                    <td>{{ diff.reference_text[:60] if diff.reference_text else '—' }}</td>
+                    <td>{{ diff.built_text[:60] if diff.built_text else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-issues">No content differences found.</p>
+        {% endif %}
+    </div>
+
+    <div class="tab-content" id="tab-links">
+        {% if results.links %}
+        <table class="diff-table">
+            <thead>
+                <tr><th>Type</th><th>Element</th><th>Reference URL</th><th>Built URL</th></tr>
+            </thead>
+            <tbody>
+                {% for diff in results.links %}
+                <tr class="diff-{{ diff.type }}">
+                    <td><span class="diff-type diff-type-{{ diff.type }}">{{ diff.type }}</span></td>
+                    <td>{{ diff.element }}</td>
+                    <td class="url-cell">{{ diff.reference_url or '—' }}</td>
+                    <td class="url-cell">{{ diff.built_url or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="no-issues">No link differences found.</p>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+{% endblock %}

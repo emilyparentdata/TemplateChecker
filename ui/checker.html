@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Compatibility Checker - TemplateChecker{% endblock %}
+
+{% block content %}
+<h1>Compatibility Checker</h1>
+<p class="subtitle">Upload an email template HTML to detect cross-platform rendering issues and auto-fix what's possible.</p>
+
+<form method="POST" enctype="multipart/form-data" action="/checker" class="upload-form" id="checker-form">
+    <div class="upload-area" id="upload-area">
+        <input type="file" name="html_file" id="html-file" accept=".html,.htm" required>
+        <label for="html-file" class="upload-label">
+            <span class="upload-icon">&#128196;</span>
+            <span class="upload-text">Choose HTML file or drag it here</span>
+            <span class="upload-hint">.html or .htm, max 2 MB</span>
+        </label>
+    </div>
+    <button type="submit" class="btn btn-primary">Check Compatibility</button>
+</form>
+
+{% if report %}
+<section class="results">
+    <h2>Results</h2>
+    <div class="summary-bar">
+        <span class="badge badge-error">{{ report.error_count }} Error{{ 's' if report.error_count != 1 }}</span>
+        <span class="badge badge-warning">{{ report.warning_count }} Warning{{ 's' if report.warning_count != 1 }}</span>
+        <span class="badge badge-info">{{ report.info_count }} Info</span>
+    </div>
+
+    {% if report.issues %}
+    <div class="issues-list">
+        {% for rule_name, issues in report.issues_by_rule().items() %}
+        <details class="issue-group" open>
+            <summary class="issue-group-header">
+                <span class="rule-name">{{ rule_name | replace('_', ' ') | title }}</span>
+                <span class="issue-count">({{ issues | length }})</span>
+            </summary>
+            <div class="issue-group-body">
+                {% for issue in issues %}
+                <div class="issue issue-{{ issue.severity }}">
+                    <span class="severity-dot severity-{{ issue.severity }}"></span>
+                    <div class="issue-content">
+                        <p class="issue-message">{{ issue.message }}</p>
+                        {% if issue.element %}
+                        <code class="issue-element">{{ issue.element }}</code>
+                        {% endif %}
+                    </div>
+                    {% if issue.can_fix %}
+                    <span class="fix-badge">Auto-fixable</span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </details>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="no-issues">No compatibility issues found!</p>
+    {% endif %}
+
+    {% if report.fixes %}
+    <h2>Fixes Applied</h2>
+    <div class="fixes-list">
+        {% for fix in report.fixes %}
+        <div class="fix-item">
+            <span class="fix-rule">{{ fix.rule | replace('_', ' ') | title }}</span>
+            <p class="fix-desc">{{ fix.description }}</p>
+            {% if fix.before and fix.after %}
+            <div class="fix-diff">
+                <div class="diff-before"><strong>Before:</strong> <code>{{ fix.before }}</code></div>
+                <div class="diff-after"><strong>After:</strong> <code>{{ fix.after }}</code></div>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <form method="POST" action="/checker/download" class="download-form">
+        <input type="hidden" name="fixed_html" value="{{ report.fixed_html | e }}">
+        <input type="hidden" name="filename" value="{{ filename }}">
+        <button type="submit" class="btn btn-success">Download Fixed HTML</button>
+    </form>
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}
